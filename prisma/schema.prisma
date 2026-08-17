@@ -1,8 +1,149 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ USERS & AUTH ============
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  address      String?
+  role         String   @default("customer") // customer | admin
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Session {
+  token     String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+}
+
+// ============ CATALOG ============
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  icon      String   @default("🍽️")
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  price       Int      // stored in PKR (Rs.)
+  image       String   @default("")
+  categoryId  Int
+  badge       String?  // Bestseller, New, Popular, Premium, Veg, Save 20%
+  rating      Float    @default(4.0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category   Category       @relation(fields: [categoryId], references: [id])
+  addons     ProductAddon[]
+  orderItems OrderItem[]
+  cartItems  CartItem[]
+}
+
+model ProductAddon {
+  id        Int    @id @default(autoincrement())
+  name      String
+  price     Int    // addon price in PKR
+  productId Int
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
+}
+
+// ============ CART ============
+
+model CartItem {
+  id        Int     @id @default(autoincrement())
+  userId    String
+  productId Int
+  quantity  Int     @default(1)
+  addons    String? // JSON array of selected addon names, e.g. '["Extra Cheese"]'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([userId])
+}
+
+// ============ ORDERS ============
+
+model Order {
+  id            String   @id @default(cuid())
+  userId        String
+  orderNumber   String   @unique // human-readable, e.g. WL-20260816-001
+  status        String   @default("pending") // pending | confirmed | preparing | delivered | cancelled
+  paymentMethod String   @default("cod") // cod | card
+  customerName  String
+  customerPhone String
+  deliveryAddr  String
+  notes         String?
+  subtotal      Int      // in PKR
+  deliveryFee   Int      @default(150)
+  discountCode  String?
+  discountAmt   Int      @default(0)
+  total         Int      // in PKR
+  estimatedMin  Int      @default(35) // estimated delivery minutes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items OrderItem[]
+
+  @@index([userId])
+}
+
+model OrderItem {
+  id           Int    @id @default(autoincrement())
+  orderId      String
+  productId    Int
+  productName  String // denormalized for historical accuracy
+  productPrice Int    // price at time of order
+  quantity     Int
+  addons       String? // JSON array
+  lineTotal    Int    // productPrice * quantity + addon prices
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+}
+
+// ============ OFFERS / COUPONS ============
+
+model Offer {
+  id            Int       @id @default(autoincrement())
+  title         String
+  description   String
+  code          String    @unique
+  icon          String    @default("🎁")
+  discountType  String    @default("percentage") // percentage | flat | free_delivery
+  discountValue Int       @default(0) // percentage value or flat amount
+  minOrder      Int       @default(0) // minimum order amount to apply
+  isActive      Boolean   @default(true)
+  validUntil    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
