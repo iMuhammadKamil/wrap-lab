@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser, getOrCreateGuestId, AuthError } from "@/lib/auth";
+import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 // Identify the user (logged in or guest)
 async function getIdentifier(): Promise<{ userId: string; isGuest: boolean }> {
@@ -15,12 +16,13 @@ async function getIdentifier(): Promise<{ userId: string; isGuest: boolean }> {
 }
 
 // GET /api/cart — fetch all cart items for the user/guest
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const tenant = await requireTenant(req);
     const { userId } = await getIdentifier();
 
     const cartItems = await db.cartItem.findMany({
-      where: { userId },
+      where: { userId, tenantId: tenant.id },
       include: {
         product: { select: { name: true, price: true, image: true, category: { select: { name: true } }, badge: true, rating: true } },
       },
@@ -37,6 +39,9 @@ export async function GET() {
       data: { items: cartItems, subtotal, itemCount: cartItems.reduce((s, i) => s + i.quantity, 0) },
     });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     console.error("Cart GET error:", error);
     return NextResponse.json({ success: false, error: "Failed to fetch cart" }, { status: 500 });
   }
@@ -45,6 +50,7 @@ export async function GET() {
 // POST /api/cart — add item to cart (or increment quantity)
 export async function POST(req: NextRequest) {
   try {
+    const tenant = await requireTenant(req);
     const { userId } = await getIdentifier();
     const body = await req.json();
     const { productId, quantity = 1, addons } = body;
@@ -54,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify product exists and is active
-    const product = await db.product.findUnique({ where: { id: productId, isActive: true } });
+    const product = await db.product.findFirst({ where: { id: productId, tenantId: tenant.id, isActive: true } });
     if (!product) {
       return NextResponse.json({ success: false, error: "Product not found" }, { status: 404 });
     }
@@ -63,7 +69,7 @@ export async function POST(req: NextRequest) {
     const addonsStr = addons && addons.length > 0 ? JSON.stringify(addons) : null;
 
     const existing = await db.cartItem.findFirst({
-      where: { userId, productId },
+      where: { userId, productId, tenantId: tenant.id },
     });
 
     let cartItem;
@@ -75,13 +81,13 @@ export async function POST(req: NextRequest) {
       });
     } else {
       cartItem = await db.cartItem.create({
-        data: { userId, productId, quantity, addons: addonsStr },
+        data: { userId, tenantId: tenant.id, productId, quantity, addons: addonsStr },
         include: { product: { select: { name: true, price: true, image: true, badge: true, rating: true } } },
       });
     }
 
     // Return updated cart summary
-    const allItems = await db.cartItem.findMany({ where: { userId }, include: { product: { select: { price: true } } } });
+    const allItems = await db.cartItem.findMany({ where: { userId, tenantId: tenant.id }, include: { product: { select: { price: true } } } });
     const subtotal = allItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
 
     return NextResponse.json({
@@ -93,6 +99,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     if (error instanceof AuthError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status });
     }

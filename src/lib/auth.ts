@@ -34,7 +34,16 @@ export async function createSession(userId: string): Promise<string> {
   return token;
 }
 
-export async function getSessionUser(): Promise<{ id: string; name: string; email: string; phone: string | null; role: string } | null> {
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+  tenantId: string;
+};
+
+export async function getSessionUser(): Promise<AuthUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -48,14 +57,14 @@ export async function getSessionUser(): Promise<{ id: string; name: string; emai
 
   const user = await db.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, name: true, email: true, phone: true, role: true, isActive: true },
+    select: { id: true, name: true, email: true, phone: true, role: true, tenantId: true, isActive: true },
   });
 
   if (!user || !user.isActive) return null;
   return user;
 }
 
-export async function requireAuth(): Promise<{ id: string; name: string; email: string; phone: string | null; role: string }> {
+export async function requireAuth(): Promise<AuthUser> {
   const user = await getSessionUser();
   if (!user) throw new AuthError("Authentication required", 401);
   return user;

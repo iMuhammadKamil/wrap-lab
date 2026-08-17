@@ -1,30 +1,39 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const tenant = await requireTenant(req);
+
     const offers = await db.offer.findMany({
-      where: { isActive: true },
+      where: { tenantId: tenant.id, isActive: true },
       orderBy: { id: "asc" },
     });
 
     return NextResponse.json({ success: true, data: offers });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     console.error("Offers API error:", error);
     return NextResponse.json({ success: false, error: "Failed to fetch offers" }, { status: 500 });
   }
 }
 
 // POST /api/offers/validate - validate a discount code
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const tenant = await requireTenant(req);
     const { code, subtotal } = await req.json();
 
     if (!code || !code.trim()) {
       return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
     }
 
-    const offer = await db.offer.findUnique({ where: { code: code.trim().toUpperCase() } });
+    const offer = await db.offer.findFirst({
+      where: { code: code.trim().toUpperCase(), tenantId: tenant.id, isActive: true },
+    });
 
     if (!offer || !offer.isActive) {
       return NextResponse.json({ success: false, error: "Invalid or expired offer code" }, { status: 404 });
@@ -63,6 +72,9 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     console.error("Offer validate error:", error);
     return NextResponse.json({ success: false, error: "Failed to validate offer" }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser, getOrCreateGuestId, AuthError } from "@/lib/auth";
+import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 async function getIdentifier(): Promise<string> {
   try {
@@ -18,6 +19,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const tenant = await requireTenant(req);
     const { id } = await params;
     const userId = await getIdentifier();
     const { quantity } = await req.json();
@@ -27,7 +29,7 @@ export async function PUT(
     }
 
     const cartItemId = parseInt(id);
-    const existing = await db.cartItem.findUnique({ where: { id: cartItemId, userId } });
+    const existing = await db.cartItem.findFirst({ where: { id: cartItemId, userId, tenantId: tenant.id } });
     if (!existing) {
       return NextResponse.json({ success: false, error: "Cart item not found" }, { status: 404 });
     }
@@ -40,7 +42,7 @@ export async function PUT(
 
     // Return updated cart
     const allItems = await db.cartItem.findMany({
-      where: { userId },
+      where: { userId, tenantId: tenant.id },
       include: { product: { select: { name: true, price: true, image: true, badge: true, rating: true } } },
     });
     const subtotal = allItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
@@ -50,6 +52,9 @@ export async function PUT(
       data: { items: allItems, subtotal, itemCount: allItems.reduce((s, i) => s + i.quantity, 0) },
     });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     if (error instanceof AuthError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status });
     }
@@ -60,15 +65,16 @@ export async function PUT(
 
 // DELETE /api/cart/[id] — remove item
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const tenant = await requireTenant(req);
     const { id } = await params;
     const userId = await getIdentifier();
     const cartItemId = parseInt(id);
 
-    const existing = await db.cartItem.findUnique({ where: { id: cartItemId, userId } });
+    const existing = await db.cartItem.findFirst({ where: { id: cartItemId, userId, tenantId: tenant.id } });
     if (!existing) {
       return NextResponse.json({ success: false, error: "Cart item not found" }, { status: 404 });
     }
@@ -76,7 +82,7 @@ export async function DELETE(
     await db.cartItem.delete({ where: { id: cartItemId } });
 
     const allItems = await db.cartItem.findMany({
-      where: { userId },
+      where: { userId, tenantId: tenant.id },
       include: { product: { select: { name: true, price: true, image: true, badge: true, rating: true } } },
     });
     const subtotal = allItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
@@ -86,6 +92,9 @@ export async function DELETE(
       data: { items: allItems, subtotal, itemCount: allItems.reduce((s, i) => s + i.quantity, 0) },
     });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     if (error instanceof AuthError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status });
     }

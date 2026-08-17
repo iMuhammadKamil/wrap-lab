@@ -10,21 +10,18 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Savor Authentic Wraps & Shawarma In Islamabad | Wrap Lab - Order Online!",
+  title: "OrderHub — Your restaurant, online in minutes",
   description:
-    "Order online from Wrap Lab in Islamabad. Try our wide range of mouth-watering Wraps, Shawarma, Mandi, Madbi, and more. Order now and avail our home delivery service!",
+    "OrderHub is a multi-tenant ordering SaaS. Browse restaurants, view menus, and order online for home delivery.",
   keywords: [
-    "Wrap Lab",
-    "Shawarma",
-    "Wraps",
-    "Mandi",
-    "Madbi",
-    "Islamabad",
-    "Arabic food",
-    "delivery",
+    "OrderHub",
+    "food delivery",
+    "order online",
+    "restaurant",
+    "multi-tenant ordering",
   ],
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌯</text></svg>",
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>",
   },
 };
 

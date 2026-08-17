@@ -1,37 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSessionUser, getOrCreateGuestId, destroySession } from "@/lib/auth";
+import { getSessionUser, getOrCreateGuestId } from "@/lib/auth";
+import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
+import type { Tenant } from "@prisma/client";
 
-// Generate order number like WL-20260816-001
-async function generateOrderNumber(): Promise<string> {
+// Order number like WL-20260816-001 — prefix derived from tenant slug
+// (shawarma-palace -> SP). Single-word slugs (wraplab) take the first letters
+// of the tenant name words so the legacy WL- prefix is preserved.
+function orderPrefixForTenant(tenant: Tenant): string {
+  const slugWords = tenant.slug.split("-").filter(Boolean);
+  if (slugWords.length > 1) {
+    return slugWords.map((w) => w.charAt(0).toUpperCase()).join("");
+  }
+  const nameWords = tenant.name.split(/\s+/).filter(Boolean);
+  return (slugWords[0].charAt(0) + (nameWords[1]?.charAt(0) ?? "")).toUpperCase();
+}
+
+async function generateOrderNumber(tenant: Tenant): Promise<string> {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
-  const prefix = `WL-${dateStr}`;
+  const prefix = `${orderPrefixForTenant(tenant)}-${dateStr}`;
 
   const lastOrder = await db.order.findFirst({
-    where: { orderNumber: { startsWith: prefix } },
+    where: { tenantId: tenant.id, orderNumber: { startsWith: prefix } },
     orderBy: { orderNumber: "desc" },
   });
 
   let seq = 1;
   if (lastOrder) {
     const parts = lastOrder.orderNumber.split("-");
-    seq = parseInt(parts[2]) + 1;
+    seq = parseInt(parts[parts.length - 1]) + 1;
   }
 
   return `${prefix}-${String(seq).padStart(3, "0")}`;
 }
 
 // GET /api/orders — list orders for the current user
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const tenant = await requireTenant(req);
     const user = await getSessionUser();
     if (!user) {
       return NextResponse.json({ success: false, error: "Login required to view orders" }, { status: 401 });
     }
 
     const orders = await db.order.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, tenantId: tenant.id },
       include: { items: true },
       orderBy: { createdAt: "desc" },
       take: 20,
@@ -39,6 +53,9 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data: orders });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     console.error("Orders GET error:", error);
     return NextResponse.json({ success: false, error: "Failed to fetch orders" }, { status: 500 });
   }
@@ -47,6 +64,7 @@ export async function GET() {
 // POST /api/orders — create a new order
 export async function POST(req: NextRequest) {
   try {
+    const tenant = await requireTenant(req);
     const user = await getSessionUser();
     const guestId = await getOrCreateGuestId();
     const userId = user ? user.id : guestId;
@@ -67,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch cart items
     const cartItems = await db.cartItem.findMany({
-      where: { userId },
+      where: { userId, tenantId: tenant.id },
       include: { product: true },
     });
 
@@ -82,8 +100,10 @@ export async function POST(req: NextRequest) {
     let discountAmt = 0;
     let freeDelivery = false;
     if (discountCode?.trim()) {
-      const offer = await db.offer.findUnique({ where: { code: discountCode.trim().toUpperCase() } });
-      if (offer && offer.isActive) {
+      const offer = await db.offer.findFirst({
+        where: { code: discountCode.trim().toUpperCase(), tenantId: tenant.id, isActive: true },
+      });
+      if (offer) {
         if (offer.validUntil && offer.validUntil < new Date()) {
           return NextResponse.json({ success: false, error: "Offer code has expired" }, { status: 400 });
         }
@@ -105,17 +125,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Delivery fee
-    const deliveryFee = freeDelivery || subtotal >= 1500 ? 0 : 150;
+    // Delivery fee from tenant config
+    const deliveryFee = freeDelivery || subtotal >= tenant.freeDeliveryThreshold ? 0 : tenant.deliveryFee;
     const total = subtotal - discountAmt + deliveryFee;
 
     // Generate order number
-    const orderNumber = await generateOrderNumber();
+    const orderNumber = await generateOrderNumber(tenant);
 
     // Create order with items in a transaction
     const order = await db.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
+          tenantId: tenant.id,
           userId,
           orderNumber,
           status: "pending",
@@ -137,6 +158,7 @@ export async function POST(req: NextRequest) {
         const lineTotal = ci.product.price * ci.quantity;
         await tx.orderItem.create({
           data: {
+            tenantId: tenant.id,
             orderId: newOrder.id,
             productId: ci.productId,
             productName: ci.product.name,
@@ -149,7 +171,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Clear the cart
-      await tx.cartItem.deleteMany({ where: { userId } });
+      await tx.cartItem.deleteMany({ where: { userId, tenantId: tenant.id } });
 
       return newOrder;
     });
@@ -165,6 +187,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     console.error("Order POST error:", error);
     return NextResponse.json({ success: false, error: "Failed to place order" }, { status: 500 });
   }

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { hashPassword, createSession, AuthError } from "@/lib/auth";
+import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 export async function POST(req: NextRequest) {
   try {
+    const tenant = await requireTenant(req);
     const { name, email, phone, password } = await req.json();
 
     if (!name?.trim() || !email?.trim() || !password) {
@@ -16,8 +18,10 @@ export async function POST(req: NextRequest) {
 
     const emailLower = email.trim().toLowerCase();
 
-    // Check if user exists
-    const existing = await db.user.findUnique({ where: { email: emailLower } });
+    // Check if user exists (email unique per tenant)
+    const existing = await db.user.findUnique({
+      where: { tenantId_email: { tenantId: tenant.id, email: emailLower } },
+    });
     if (existing) {
       return NextResponse.json({ success: false, error: "An account with this email already exists" }, { status: 409 });
     }
@@ -26,6 +30,7 @@ export async function POST(req: NextRequest) {
 
     const user = await db.user.create({
       data: {
+        tenantId: tenant.id,
         name: name.trim(),
         email: emailLower,
         phone: phone?.trim() || null,
@@ -44,9 +49,13 @@ export async function POST(req: NextRequest) {
         email: user.email,
         phone: user.phone,
         role: user.role,
+        tenantId: user.tenantId,
       },
     });
   } catch (error) {
+    if (error instanceof TenantNotFoundError) {
+      return tenantNotFound();
+    }
     if (error instanceof AuthError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status });
     }
