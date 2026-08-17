@@ -64,3 +64,50 @@ curl https://<your-domain>/api/products     # expect 12 seeded products
 ## Admin account (seeded)
 
 - Email: `admin@wraplab.pk` / Password: `admin123`
+
+---
+
+## Multi-Tenant SaaS
+
+The app is now a multi-tenant platform ("OrderHub"). Every restaurant gets its own sub-path storefront and admin dashboard; all data is scoped per tenant in a single Postgres database.
+
+### URL scheme
+
+| Path | Purpose |
+|------|---------|
+| `/` | Platform landing with tenant directory (from `GET /api/tenant`) |
+| `/{slug}` | Tenant storefront, e.g. `/wraplab`, `/shawarma-palace` |
+| `/{slug}/api/*` | Tenant-scoped APIs; middleware (`src/middleware.ts`) rewrites to `/api/*` and forwards the slug via the `x-tenant-slug` header |
+| `/admin` | Admin dashboard (login required; APIs under `/api/admin/*` are session-scoped) |
+| `/signup` | Self-serve tenant signup → `POST /api/signup` creates Tenant + admin User + starter Category and logs the owner in |
+
+### Seeded demo tenants
+
+Both are created by `prisma/seed.ts` (run `npx tsx prisma/seed.ts` after `prisma migrate deploy`). See the seed file for credentials:
+
+- **Wrap Lab** — slug `wraplab` — 9 categories / 12 products / 3 offers — admin `admin@wraplab.pk`
+- **Shawarma Palace** — slug `shawarma-palace` — 3 categories / 5 products / 2 offers — admin `admin@shawarmapalace.pk`
+
+### Creating a tenant
+
+1. Visit `/signup` (or `POST /api/signup` with `restaurantName`, `slug`, `name`, `email`, `password`).
+2. The tenant gets a storefront at `/{slug}` immediately.
+3. Log in at `/admin` with the new admin account to manage categories, products, offers, orders, and settings (per-tenant branding, fees, contact).
+
+### Migration note
+
+Migration `20260817191548_add_tenants` introduces the `Tenant` model and `tenantId` FK on all tenant-owned tables. Apply with:
+
+```sh
+npx prisma migrate deploy
+```
+
+### Production env vars (current set)
+
+Only these are set on Vercel production — the app reads nothing else (per-tenant branding/fees come from the `Tenant` table, not `NEXT_PUBLIC_*`):
+
+```env
+DATABASE_URL   # Supabase pooler URI
+AUTH_SECRET    # random secret
+SESSION_MAX_AGE
+```

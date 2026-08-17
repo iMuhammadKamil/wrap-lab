@@ -191,3 +191,38 @@ Build runs `prisma generate && next build`; run `npx prisma migrate deploy` to a
 ## License
 
 This project is for educational purposes. All product images and branding belong to [Wrap Lab](https://wraplab.pk/).
+
+---
+
+## Multi-Tenant SaaS
+
+The app is now a multi-tenant ordering platform ("OrderHub"). Each restaurant is a **tenant** with its own storefront, catalog, orders, offers, and admin dashboard — all in one Postgres database, isolated by `tenantId`.
+
+### URL scheme
+
+| Path | Purpose |
+|------|---------|
+| `/` | Platform landing page with tenant directory (`GET /api/tenant`) |
+| `/{slug}` | Tenant storefront, e.g. `/wraplab`, `/shawarma-palace` |
+| `/{slug}/api/*` | Tenant-scoped APIs — `src/middleware.ts` rewrites to `/api/*` and sets the `x-tenant-slug` header |
+| `/admin` | Admin dashboard (session-scoped APIs under `/api/admin/*`, no slug) |
+| `/signup` | Self-serve tenant signup → `POST /api/signup` creates Tenant + admin User + starter Category and logs the owner in |
+
+### Demo tenants (seeded)
+
+Created by `prisma/seed.ts` — see that file for the admin passwords (not duplicated here):
+
+- **Wrap Lab** (`/wraplab`) — admin `admin@wraplab.pk` — 9 categories / 12 products / 3 offers
+- **Shawarma Palace** (`/shawarma-palace`) — admin `admin@shawarmapalace.pk` — 3 categories / 5 products / 2 offers
+
+### Creating a tenant
+
+1. Open `/signup` (or `POST /api/signup` with `restaurantName`, `slug`, `name`, `email`, `password`).
+2. The storefront is live immediately at `/{slug}`.
+3. Sign in at `/admin` to manage the catalog, offers, orders, and tenant settings (branding, fees, contact).
+
+### Database
+
+- Migration `20260817191548_add_tenants` adds the `Tenant` model plus `tenantId` on all tenant-owned tables — apply with `npx prisma migrate deploy`.
+- Auth uses DB-backed sessions (`wraplab_session` cookie); `POST /api/auth/login` works both at tenant level (`/{slug}/api/auth/login`) and platform level (`/api/auth/login`, which prefers admin-role accounts).
+- Production only needs `DATABASE_URL`, `AUTH_SECRET`, and `SESSION_MAX_AGE` — branding/fees come from the `Tenant` table, not `NEXT_PUBLIC_*` vars.
