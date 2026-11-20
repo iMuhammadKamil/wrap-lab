@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type { Tenant } from "@prisma/client";
 import {
@@ -123,8 +124,11 @@ export interface LocalDb {
   orders: LocalOrder[];
 }
 
-const DB_FILE = path.join(process.cwd(), ".local-db.json");
+const DB_FILE = process.env.VERCEL
+  ? path.join(os.tmpdir(), ".local-db.json")
+  : path.join(process.cwd(), ".local-db.json");
 const ADMIN_HASH = "$2b$10$mfxYhazZ4e57i09ouSe5HOZpwc6Si7N9rK92k2qp3dB4N.Qk.kI8i"; // admin123
+let memoryDb: LocalDb | null = null;
 
 function createInitialDb(): LocalDb {
   const now = new Date().toISOString();
@@ -227,18 +231,25 @@ export function readLocalDb(): LocalDb {
   try {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, "utf8");
-      return JSON.parse(raw) as LocalDb;
+      memoryDb = JSON.parse(raw) as LocalDb;
+      return memoryDb;
     }
   } catch {
     // re-create if corrupt
   }
+  if (memoryDb) return memoryDb;
   const initial = createInitialDb();
   writeLocalDb(initial);
   return initial;
 }
 
 export function writeLocalDb(data: LocalDb): void {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
+  memoryDb = data;
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
+  } catch {
+    // Ignore write errors on read-only filesystems; memoryDb still holds state
+  }
 }
 
 export function toPrismaTenant(t: LocalDb["tenants"][number]): Tenant {

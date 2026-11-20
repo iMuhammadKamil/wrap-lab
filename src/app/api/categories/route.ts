@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { FALLBACK_CATEGORIES } from "@/lib/fallback-data";
 import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
@@ -23,17 +24,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: cats });
     }
 
-    const categories = await db.category.findMany({
-      where: { tenantId: tenant.id, isActive: true },
-      orderBy: { sortOrder: "asc" },
-      include: {
-        _count: {
-          select: { products: { where: { isActive: true } } },
+    try {
+      const categories = await db.category.findMany({
+        where: { tenantId: tenant.id, isActive: true },
+        orderBy: { sortOrder: "asc" },
+        include: {
+          _count: {
+            select: { products: { where: { isActive: true } } },
+          },
         },
-      },
-    });
+      });
 
-    return NextResponse.json({ success: true, data: categories });
+      if (categories.length === 0 && FALLBACK_CATEGORIES[tenant.slug]) {
+        return NextResponse.json({ success: true, data: FALLBACK_CATEGORIES[tenant.slug] });
+      }
+
+      return NextResponse.json({ success: true, data: categories });
+    } catch {
+      if (FALLBACK_CATEGORIES[tenant.slug]) {
+        return NextResponse.json({ success: true, data: FALLBACK_CATEGORIES[tenant.slug] });
+      }
+      throw new Error("Failed to fetch categories");
+    }
   } catch (error) {
     if (error instanceof TenantNotFoundError) {
       return tenantNotFound();

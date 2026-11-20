@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { FALLBACK_PRODUCTS } from "@/lib/fallback-data";
 import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
+
+function filterFallbackProducts(slug: string, category: string | null, search: string | null) {
+  let items = FALLBACK_PRODUCTS[slug] ?? [];
+  if (category && category !== "All") {
+    items = items.filter((p) => p.category.name === category);
+  }
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    items = items.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+    );
+  }
+  return items;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,16 +62,27 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const products = await db.product.findMany({
-      where,
-      include: {
-        category: { select: { name: true, icon: true } },
-        addons: { select: { name: true, price: true }, orderBy: { name: "asc" } },
-      },
-      orderBy: { id: "asc" },
-    });
+    try {
+      const products = await db.product.findMany({
+        where,
+        include: {
+          category: { select: { name: true, icon: true } },
+          addons: { select: { name: true, price: true }, orderBy: { name: "asc" } },
+        },
+        orderBy: { id: "asc" },
+      });
 
-    return NextResponse.json({ success: true, data: products });
+      if (products.length === 0 && !search?.trim() && (!category || category === "All") && FALLBACK_PRODUCTS[tenant.slug]) {
+        return NextResponse.json({ success: true, data: filterFallbackProducts(tenant.slug, category, search) });
+      }
+
+      return NextResponse.json({ success: true, data: products });
+    } catch {
+      if (FALLBACK_PRODUCTS[tenant.slug]) {
+        return NextResponse.json({ success: true, data: filterFallbackProducts(tenant.slug, category, search) });
+      }
+      throw new Error("Failed to fetch products");
+    }
   } catch (error) {
     if (error instanceof TenantNotFoundError) {
       return tenantNotFound();
