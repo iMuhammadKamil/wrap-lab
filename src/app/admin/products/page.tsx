@@ -46,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "../_components/api";
 import { formatMoney } from "../_components/format";
+import { FOOD_PRESETS, ImagePicker } from "../_components/image-picker";
 import { EmptyState, PageHeader } from "../_components/page-header";
 import type { AdminSettings, CategoryWithCount, ProductWithCategory } from "../_components/types";
 
@@ -221,15 +222,15 @@ function ProductForm({
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="p-image">Image URL</Label>
-            <Input
-              id="p-image"
-              value={image}
-              onChange={(e) => setImage(e.target.value)}
-              placeholder="https://…"
-            />
-          </div>
+          <ImagePicker
+            id="p-image"
+            label="Product Image"
+            value={image}
+            onChange={setImage}
+            presets={FOOD_PRESETS}
+            maxDim={800}
+            placeholder="/images/wrap.jpg or https://…"
+          />
 
           <div className="grid gap-2">
             <div className="flex items-center justify-between">

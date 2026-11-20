@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readLocalDb, useLocalStore, writeLocalDb } from "@/lib/local-store";
 import { requireAdmin, ok, fail, handleError, stripTenantId, isPrismaDuplicate } from "../_lib/helpers";
 
 type AddonInput = { name?: unknown; price?: unknown };
@@ -22,6 +23,21 @@ function validateAddons(addons: unknown): AddonInput[] | null {
 export async function GET() {
   try {
     const user = await requireAdmin();
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const catMap = new Map(store.categories.map((c) => [c.id, c]));
+      const products = store.products
+        .filter((p) => p.tenantId === user.tenantId)
+        .sort((a, b) => b.id - a.id)
+        .map((p) => {
+          const cat = catMap.get(p.categoryId);
+          return {
+            ...p,
+            category: cat ? { id: cat.id, name: cat.name, icon: cat.icon } : { id: p.categoryId, name: "Menu", icon: "🍽️" },
+          };
+        });
+      return ok(products);
+    }
     const products = await db.product.findMany({
       where: { tenantId: user.tenantId },
       include: {
@@ -59,11 +75,6 @@ export async function POST(req: NextRequest) {
       return fail("Valid category is required", 400);
     }
 
-    const category = await db.category.findFirst({
-      where: { id: categoryId, tenantId: user.tenantId },
-    });
-    if (!category) return fail("Category not found", 400);
-
     const addons = body.addons !== undefined ? validateAddons(body.addons) : [];
     if (addons === null) return fail("Invalid addons", 400);
 
@@ -71,6 +82,37 @@ export async function POST(req: NextRequest) {
     const badge = typeof body.badge === "string" && body.badge.trim() ? body.badge.trim() : null;
     const image = typeof body.image === "string" ? body.image.trim() : "";
     const description = typeof body.description === "string" ? body.description.trim() : "";
+
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const cat = store.categories.find((c) => c.id === categoryId && c.tenantId === user.tenantId);
+      if (!cat) return fail("Category not found", 400);
+      const product = {
+        id: store.nextId++,
+        tenantId: user.tenantId,
+        name,
+        description,
+        price: Math.round(price),
+        image,
+        categoryId,
+        badge,
+        rating,
+        isActive: true,
+        addons: addons.map((a) => ({
+          id: store.nextId++,
+          name: a.name as string,
+          price: a.price as number,
+        })),
+      };
+      store.products.push(product);
+      writeLocalDb(store);
+      return ok({ ...product, category: { id: cat.id, name: cat.name, icon: cat.icon } }, 201);
+    }
+
+    const category = await db.category.findFirst({
+      where: { id: categoryId, tenantId: user.tenantId },
+    });
+    if (!category) return fail("Category not found", 400);
 
     const product = await db.product.create({
       data: {

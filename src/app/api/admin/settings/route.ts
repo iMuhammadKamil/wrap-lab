@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readLocalDb, useLocalStore, writeLocalDb } from "@/lib/local-store";
+import { invalidateTenantCache } from "@/lib/tenant";
 import { requireAdmin, ok, fail, handleError, isValidHexColor } from "../_lib/helpers";
 
 const SETTING_FIELDS = [
@@ -22,6 +24,13 @@ const SETTING_FIELDS = [
 export async function GET() {
   try {
     const user = await requireAdmin();
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const tenant = store.tenants.find((t) => t.id === user.tenantId);
+      if (!tenant) return fail("Tenant not found", 404);
+      const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...settings } = tenant;
+      return ok(settings);
+    }
     const tenant = await db.tenant.findUnique({ where: { id: user.tenantId } });
     if (!tenant) return fail("Tenant not found", 404);
 
@@ -36,7 +45,10 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const user = await requireAdmin();
-    const tenant = await db.tenant.findUnique({ where: { id: user.tenantId } });
+    const store = useLocalStore() ? readLocalDb() : null;
+    const tenant = store
+      ? store.tenants.find((t) => t.id === user.tenantId) ?? null
+      : await db.tenant.findUnique({ where: { id: user.tenantId } });
     if (!tenant) return fail("Tenant not found", 404);
 
     const body = await req.json().catch(() => null);
@@ -94,10 +106,23 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    if (store) {
+      const idx = store.tenants.findIndex((t) => t.id === user.tenantId);
+      store.tenants[idx] = {
+        ...store.tenants[idx],
+        ...(data as Partial<(typeof store.tenants)[number]>),
+        updatedAt: new Date().toISOString(),
+      };
+      writeLocalDb(store);
+      const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...settings } = store.tenants[idx];
+      return ok(settings);
+    }
+
     const updated = await db.tenant.update({
       where: { id: user.tenantId },
       data,
     });
+    invalidateTenantCache(updated.slug);
 
     const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...settings } = updated;
     return ok(settings);

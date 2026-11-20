@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { FALLBACK_TENANTS } from "@/lib/fallback-data";
+import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import { getTenantFromPath, tenantNotFound } from "@/lib/tenant";
 
 // Public tenant config endpoint.
@@ -25,24 +27,61 @@ export async function GET(req: NextRequest) {
 
     // Platform-level directory: no slug in play.
     if (!tenant) {
-      const tenants = await db.tenant.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          tagline: true,
-          logo: true,
-          primaryColor: true,
-          phone: true,
-          address: true,
-          deliveryFee: true,
-          freeDeliveryThreshold: true,
-          currency: true,
-        },
-        orderBy: { name: "asc" },
-      });
-      return NextResponse.json({ success: true, data: tenants });
+      if (useLocalStore()) {
+        const store = readLocalDb();
+        const tenants = store.tenants
+          .filter((t) => t.isActive)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((t) => ({
+            id: t.id,
+            slug: t.slug,
+            name: t.name,
+            tagline: t.tagline,
+            logo: t.logo,
+            primaryColor: t.primaryColor,
+            phone: t.phone,
+            address: t.address,
+            deliveryFee: t.deliveryFee,
+            freeDeliveryThreshold: t.freeDeliveryThreshold,
+            currency: t.currency,
+          }));
+        return NextResponse.json({ success: true, data: tenants });
+      }
+      try {
+        const tenants = await db.tenant.findMany({
+          where: { isActive: true },
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            tagline: true,
+            logo: true,
+            primaryColor: true,
+            phone: true,
+            address: true,
+            deliveryFee: true,
+            freeDeliveryThreshold: true,
+            currency: true,
+          },
+          orderBy: { name: "asc" },
+        });
+        return NextResponse.json({ success: true, data: tenants });
+      } catch {
+        const fallback = FALLBACK_TENANTS.map((t) => ({
+          id: t.id,
+          slug: t.slug,
+          name: t.name,
+          tagline: t.tagline,
+          logo: t.logo,
+          primaryColor: t.primaryColor,
+          phone: t.phone,
+          address: t.address,
+          deliveryFee: t.deliveryFee,
+          freeDeliveryThreshold: t.freeDeliveryThreshold,
+          currency: t.currency,
+        }));
+        return NextResponse.json({ success: true, data: fallback, fallback: true });
+      }
     }
 
     return NextResponse.json({

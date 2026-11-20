@@ -34,6 +34,8 @@ export default function SignupPage() {
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [primaryColor, setPrimaryColor] = useState("#d7b51a");
+  const [existingAdmin, setExistingAdmin] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -47,7 +49,7 @@ export default function SignupPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.success && d.data?.role === "admin") {
-          window.location.href = "/admin";
+          setExistingAdmin(d.data.name || d.data.email);
         }
       })
       .catch(() => {});
@@ -103,6 +105,7 @@ export default function SignupPage() {
           password,
           phone: phone.trim() || undefined,
           address: address.trim() || undefined,
+          primaryColor,
         }),
       });
       const data = await res.json();
@@ -172,6 +175,13 @@ export default function SignupPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-4">
+              {existingAdmin && (
+                <div className="mb-2 bg-[#d7b51a]/10 border border-[#d7b51a]/30 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-white/80">
+                  <span>Signed in as <strong>{existingAdmin}</strong></span>
+                  <a href="/admin" className="text-[#d7b51a] font-semibold hover:underline">Go to Dashboard →</a>
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-semibold text-white/70 mb-1.5 block">
                   Restaurant name
@@ -347,10 +357,38 @@ export default function SignupPage() {
                 {isLoading ? "Creating your store..." : "Launch my restaurant"}
               </button>
 
+              <div>
+                <label className="text-sm font-semibold text-white/70 mb-1.5 block">
+                  Brand accent color
+                </label>
+                <div className="flex items-center gap-2.5">
+                  {["#d7b51a", "#ef4444", "#f97316", "#10b981", "#3b82f6", "#8b5cf6"].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setPrimaryColor(c)}
+                      className={
+                        "w-8 h-8 rounded-full border-2 transition-transform cursor-pointer " +
+                        (primaryColor === c ? "border-white scale-110" : "border-transparent opacity-70 hover:opacity-100")
+                      }
+                      style={{ backgroundColor: c }}
+                      aria-label={`Select color ${c}`}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="w-8 h-8 rounded-full bg-transparent border-0 cursor-pointer"
+                    aria-label="Custom brand color"
+                  />
+                </div>
+              </div>
+
               <p className="text-center text-xs text-white/35">
                 Already have a restaurant?{" "}
-                <a href="/" className="text-[#d7b51a] font-semibold hover:underline">
-                  Back to home
+                <a href="/login" className="text-[#d7b51a] font-semibold hover:underline">
+                  Sign in to dashboard
                 </a>
               </p>
             </form>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser, getOrCreateGuestId, AuthError } from "@/lib/auth";
+import { readLocalDb, useLocalStore, writeLocalDb } from "@/lib/local-store";
 import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 async function getIdentifier(): Promise<string> {
@@ -29,6 +30,29 @@ export async function PUT(
     }
 
     const cartItemId = parseInt(id);
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const idx = store.cartItems.findIndex(
+        (ci) => ci.id === cartItemId && ci.userId === userId && ci.tenantId === tenant.id
+      );
+      if (idx === -1) {
+        return NextResponse.json({ success: false, error: "Cart item not found" }, { status: 404 });
+      }
+      if (quantity === 0) {
+        store.cartItems.splice(idx, 1);
+      } else {
+        store.cartItems[idx].quantity = quantity;
+      }
+      writeLocalDb(store);
+      const prodMap = new Map(store.products.map((p) => [p.id, p]));
+      const allItems = store.cartItems.filter((ci) => ci.userId === userId && ci.tenantId === tenant.id);
+      const subtotal = allItems.reduce((s, i) => s + (prodMap.get(i.productId)?.price ?? 0) * i.quantity, 0);
+      return NextResponse.json({
+        success: true,
+        data: { items: allItems, subtotal, itemCount: allItems.reduce((s, i) => s + i.quantity, 0) },
+      });
+    }
+
     const existing = await db.cartItem.findFirst({ where: { id: cartItemId, userId, tenantId: tenant.id } });
     if (!existing) {
       return NextResponse.json({ success: false, error: "Cart item not found" }, { status: 404 });
@@ -73,6 +97,25 @@ export async function DELETE(
     const { id } = await params;
     const userId = await getIdentifier();
     const cartItemId = parseInt(id);
+
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const idx = store.cartItems.findIndex(
+        (ci) => ci.id === cartItemId && ci.userId === userId && ci.tenantId === tenant.id
+      );
+      if (idx === -1) {
+        return NextResponse.json({ success: false, error: "Cart item not found" }, { status: 404 });
+      }
+      store.cartItems.splice(idx, 1);
+      writeLocalDb(store);
+      const prodMap = new Map(store.products.map((p) => [p.id, p]));
+      const allItems = store.cartItems.filter((ci) => ci.userId === userId && ci.tenantId === tenant.id);
+      const subtotal = allItems.reduce((s, i) => s + (prodMap.get(i.productId)?.price ?? 0) * i.quantity, 0);
+      return NextResponse.json({
+        success: true,
+        data: { items: allItems, subtotal, itemCount: allItems.reduce((s, i) => s + i.quantity, 0) },
+      });
+    }
 
     const existing = await db.cartItem.findFirst({ where: { id: cartItemId, userId, tenantId: tenant.id } });
     if (!existing) {

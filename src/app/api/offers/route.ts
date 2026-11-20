@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
     const tenant = await requireTenant(req);
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const offers = store.offers.filter((o) => o.tenantId === tenant.id && o.isActive);
+      return NextResponse.json({ success: true, data: offers });
+    }
 
     const offers = await db.offer.findMany({
       where: { tenantId: tenant.id, isActive: true },
@@ -31,15 +37,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Code is required" }, { status: 400 });
     }
 
-    const offer = await db.offer.findFirst({
-      where: { code: code.trim().toUpperCase(), tenantId: tenant.id, isActive: true },
-    });
+    const offer = useLocalStore()
+      ? readLocalDb().offers.find(
+          (o) => o.code === code.trim().toUpperCase() && o.tenantId === tenant.id && o.isActive
+        ) ?? null
+      : await db.offer.findFirst({
+          where: { code: code.trim().toUpperCase(), tenantId: tenant.id, isActive: true },
+        });
 
     if (!offer || !offer.isActive) {
       return NextResponse.json({ success: false, error: "Invalid or expired offer code" }, { status: 404 });
     }
 
-    if (offer.validUntil && offer.validUntil < new Date()) {
+    if (offer.validUntil && new Date(offer.validUntil) < new Date()) {
       return NextResponse.json({ success: false, error: "This offer has expired" }, { status: 400 });
     }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
@@ -8,6 +9,30 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const category = searchParams.get("category");
     const search = searchParams.get("search");
+
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const catMap = new Map(store.categories.map((c) => [c.id, c]));
+      let items = store.products
+        .filter((p) => p.tenantId === tenant.id && p.isActive)
+        .map((p) => {
+          const cat = catMap.get(p.categoryId);
+          return {
+            ...p,
+            category: { name: cat?.name ?? "Menu", icon: cat?.icon ?? "🍽️" },
+          };
+        });
+      if (category && category !== "All") {
+        items = items.filter((p) => p.category.name === category);
+      }
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        items = items.filter(
+          (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+        );
+      }
+      return NextResponse.json({ success: true, data: items });
+    }
 
     const where: Record<string, unknown> = { tenantId: tenant.id, isActive: true };
 

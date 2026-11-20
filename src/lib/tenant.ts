@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getFallbackTenant } from "@/lib/fallback-data";
+import { readLocalDb, toPrismaTenant, useLocalStore } from "@/lib/local-store";
 import type { Tenant } from "@prisma/client";
 
 const tenantCache = new Map<string, Tenant>();
@@ -24,12 +26,26 @@ export async function getTenantFromPath(req: NextRequest): Promise<Tenant | null
   return getTenantBySlug(segments[1]);
 }
 
+export function invalidateTenantCache(slug?: string): void {
+  if (slug) tenantCache.delete(slug);
+  else tenantCache.clear();
+}
+
 export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
+  if (useLocalStore()) {
+    const store = readLocalDb();
+    const found = store.tenants.find((t) => t.slug === slug && t.isActive);
+    return found ? toPrismaTenant(found) : null;
+  }
   const cached = tenantCache.get(slug);
   if (cached) return cached;
-  const tenant = await db.tenant.findFirst({ where: { slug, isActive: true } });
-  if (tenant) tenantCache.set(slug, tenant);
-  return tenant;
+  try {
+    const tenant = await db.tenant.findFirst({ where: { slug, isActive: true } });
+    if (tenant) tenantCache.set(slug, tenant);
+    return tenant;
+  } catch {
+    return getFallbackTenant(slug);
+  }
 }
 
 export async function requireTenant(req: NextRequest): Promise<Tenant> {

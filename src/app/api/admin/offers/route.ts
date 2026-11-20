@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import {
   requireAdmin,
   ok,
@@ -14,6 +15,10 @@ import {
 export async function GET() {
   try {
     const user = await requireAdmin();
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      return ok(store.offers.filter((o) => o.tenantId === user.tenantId).sort((a, b) => b.id - a.id));
+    }
     const offers = await db.offer.findMany({
       where: { tenantId: user.tenantId },
       orderBy: { id: "desc" },

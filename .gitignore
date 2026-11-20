@@ -12,3 +12,5 @@ build/
 .next/
 .vercel
 .env*
+!.env.example
+.local-db.json

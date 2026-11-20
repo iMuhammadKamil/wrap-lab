@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { readLocalDb, useLocalStore, writeLocalDb } from "@/lib/local-store";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 
@@ -19,9 +20,15 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export async function createSession(userId: string): Promise<string> {
   const token = uuidv4();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-  await db.session.create({
-    data: { token, userId, expiresAt },
-  });
+  if (useLocalStore()) {
+    const store = readLocalDb();
+    store.sessions.push({ token, userId, expiresAt: expiresAt.toISOString() });
+    writeLocalDb(store);
+  } else {
+    await db.session.create({
+      data: { token, userId, expiresAt },
+    });
+  }
   // Store token in HTTP-only cookie
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
@@ -47,6 +54,27 @@ export async function getSessionUser(): Promise<AuthUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
+
+  if (useLocalStore()) {
+    const store = readLocalDb();
+    const session = store.sessions.find((s) => s.token === token);
+    if (!session) return null;
+    if (new Date(session.expiresAt).getTime() < Date.now()) {
+      store.sessions = store.sessions.filter((s) => s.token !== token);
+      writeLocalDb(store);
+      return null;
+    }
+    const user = store.users.find((u) => u.id === session.userId);
+    if (!user || !user.isActive) return null;
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      tenantId: user.tenantId,
+    };
+  }
 
   const session = await db.session.findUnique({ where: { token } });
   if (!session) return null;
@@ -74,7 +102,13 @@ export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (token) {
-    await db.session.delete({ where: { token } }).catch(() => {});
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      store.sessions = store.sessions.filter((s) => s.token !== token);
+      writeLocalDb(store);
+    } else {
+      await db.session.delete({ where: { token } }).catch(() => {});
+    }
   }
   cookieStore.delete(SESSION_COOKIE);
 }

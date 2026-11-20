@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyPassword, createSession, AuthError } from "@/lib/auth";
+import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import { getTenantFromPath, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 export async function POST(req: NextRequest) {
@@ -12,16 +13,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Email and password are required" }, { status: 400 });
     }
 
+    const emailLower = email.trim().toLowerCase();
     let user;
-    if (tenant) {
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      if (tenant) {
+        user = store.users.find((u) => u.tenantId === tenant.id && u.email === emailLower) ?? null;
+      } else {
+        const matches = store.users.filter((u) => u.email === emailLower);
+        user = matches.find((m) => m.role === "admin") ?? matches[0] ?? null;
+      }
+    } else if (tenant) {
       user = await db.user.findUnique({
-        where: { tenantId_email: { tenantId: tenant.id, email: email.trim().toLowerCase() } },
+        where: { tenantId_email: { tenantId: tenant.id, email: emailLower } },
       });
     } else {
       // Platform-level login (e.g. admin dashboard): email is unique per tenant,
       // so prefer an admin account when the same email exists under multiple tenants.
       const matches = await db.user.findMany({
-        where: { email: email.trim().toLowerCase() },
+        where: { email: emailLower },
         orderBy: { createdAt: "asc" },
       });
       user = matches.find((m) => m.role === "admin") ?? matches[0] ?? null;

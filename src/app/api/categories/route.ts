@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readLocalDb, useLocalStore } from "@/lib/local-store";
 import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
     const tenant = await requireTenant(req);
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const cats = store.categories
+        .filter((c) => c.tenantId === tenant.id && c.isActive)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          icon: c.icon,
+          sortOrder: c.sortOrder,
+          _count: {
+            products: store.products.filter((p) => p.tenantId === tenant.id && p.categoryId === c.id && p.isActive).length,
+          },
+        }));
+      return NextResponse.json({ success: true, data: cats });
+    }
 
     const categories = await db.category.findMany({
       where: { tenantId: tenant.id, isActive: true },

@@ -12,9 +12,14 @@ export function middleware(req: NextRequest) {
   const url = req.nextUrl.clone();
   url.pathname = "/api/" + segments.slice(2).join("/");
 
-  const res = NextResponse.rewrite(url);
-  res.headers.set("x-tenant-slug", segments[0]);
-  return res;
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-tenant-slug", segments[0]);
+
+  return NextResponse.rewrite(url, {
+    request: {
+      headers: requestHeaders,
+    },
+  });
 }
 
 export const config = {

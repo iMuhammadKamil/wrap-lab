@@ -133,9 +133,9 @@ function waNumber(tenant: TenantConfig): string {
 // ============ DATA CONSTANTS (fallbacks) ============
 
 const BANNER_DATA = [
-  { title: "Delicious Wraps", subtitle: "Fresh & Flavorful, Delivered Fast", cta: "Order Now", bg: "from-amber-800 via-orange-700 to-amber-900" },
-  { title: "Authentic Mandi", subtitle: "Traditional Arabic Rice Dishes", cta: "Explore Menu", bg: "from-stone-800 via-amber-900 to-stone-800" },
-  { title: "Family Deals", subtitle: "Feed the Whole Family", cta: "View Deals", bg: "from-red-900 via-orange-800 to-red-900" },
+  { title: "Delicious Wraps", subtitle: "Fresh & Flavorful, Delivered Fast", cta: "Order Now", bg: "from-amber-800 via-orange-700 to-amber-900", image: "/images/wrap.jpg" },
+  { title: "Authentic Mandi", subtitle: "Traditional Arabic Rice Dishes", cta: "Explore Menu", bg: "from-stone-800 via-amber-900 to-stone-800", image: "/images/mandi.jpg" },
+  { title: "Family Deals", subtitle: "Feed the Whole Family", cta: "View Deals", bg: "from-red-900 via-orange-800 to-red-900", image: "/images/deal.jpg" },
 ];
 
 function getCategoryEmoji(cat: string): string {
@@ -183,10 +183,27 @@ function AppDownloadBanner({ onClose }: { onClose: () => void }) {
 }
 
 function TenantLogo({ tenant, className = "" }: { tenant: TenantConfig; className?: string }) {
+  const [imgError, setImgError] = useState(false);
   const [l1, l2] = splitLogoName(tenant.name);
   const secondary = safeColor(tenant.secondaryColor, "#333333");
   const primary = safeColor(tenant.primaryColor, "#d7b51a");
   const size = Math.max(15, Math.min(28, Math.floor(150 / Math.max(l1.length, l2.length))));
+  if (tenant.logo && !imgError) {
+    return (
+      <div className={"flex items-center gap-2.5 " + className}>
+        <img
+          src={tenant.logo}
+          alt={tenant.name}
+          onError={() => setImgError(true)}
+          className="h-10 sm:h-12 w-10 sm:w-12 rounded-xl object-cover border border-gray-200/70 shadow-sm flex-shrink-0"
+        />
+        <div className="flex flex-col items-start justify-center leading-tight">
+          <span style={{ color: secondary, fontWeight: 800, fontSize: Math.min(size, 20), letterSpacing: -0.5 }}>{l1}</span>
+          {l2 !== l1 && <span style={{ color: primary, fontWeight: 400, fontSize: Math.min(size - 2, 16), letterSpacing: -0.5 }}>{l2}</span>}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={"flex flex-col items-center justify-center leading-tight " + className}>
       <span style={{ color: secondary, fontWeight: 800, fontSize: size, letterSpacing: -0.5 }}>{l1}</span>
@@ -283,7 +300,8 @@ function HeroBanner({ onCtaClick, loc }: { onCtaClick: (cta: string) => void; lo
         {BANNER_DATA.map((b, i) => (
           <div key={i} className="w-full shrink-0 relative overflow-hidden">
             <div className={"relative w-full aspect-[1920/500] bg-gradient-to-r " + b.bg}>
-              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50" />
+              <img src={b.image} alt={b.title} className="absolute inset-0 w-full h-full object-cover opacity-40" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center text-white px-4">
                   <p className="text-xs sm:text-sm uppercase tracking-[0.3em] mb-2 opacity-80">{loc}&apos;s Favorite</p>
@@ -347,8 +365,9 @@ function CategoryNav({ categories, activeCategory, onSelect }: { categories: Cat
 }
 
 // ---- Menu Item Card ----
-function MenuItemCard({ item, onOpenDetail, onQuickAdd, currency }: { item: Product; onOpenDetail: (item: Product) => void; onQuickAdd: (item: Product) => void; currency: string }) {
+function MenuItemCard({ item, onOpenDetail, onQuickAdd, onDecrement, currency }: { item: Product; onOpenDetail: (item: Product) => void; onQuickAdd: (item: Product) => void; onDecrement: (item: Product) => void; currency: string }) {
   const qty = useCartStore((s) => s.getItemQuantity(item.id));
+  const [imgError, setImgError] = useState(false);
   const badgeColors: Record<string, string> = {
     Bestseller: "bg-amber-400 text-black", New: "bg-green-500 text-white", Popular: "bg-orange-500 text-white",
     Premium: "bg-purple-600 text-white", Veg: "bg-green-600 text-white", "Save 20%": "bg-red-500 text-white",
@@ -357,8 +376,19 @@ function MenuItemCard({ item, onOpenDetail, onQuickAdd, currency }: { item: Prod
     <motion.div layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} whileHover={{ y: -4 }} transition={{ duration: 0.3 }}
       className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-shadow duration-300 group">
       <div className="relative aspect-[4/3] overflow-hidden bg-gray-100 cursor-pointer" onClick={() => onOpenDetail(item)}>
-        <div className={"absolute inset-0 bg-gradient-to-br " + (item.category.name === "Wraps" ? "from-amber-50 to-orange-100" : item.category.name === "Shawarma" ? "from-red-50 to-orange-50" : item.category.name === "Mandi" ? "from-yellow-50 to-amber-100" : item.category.name === "Madbi" ? "from-orange-50 to-red-50" : item.category.name === "Beverages" ? "from-cyan-50 to-blue-50" : item.category.name === "Sides" ? "from-yellow-50 to-amber-50" : item.category.name === "Desserts" ? "from-pink-50 to-rose-50" : "from-amber-50 to-yellow-50")} />
-        <div className="absolute inset-0 flex items-center justify-center text-6xl select-none">{getCategoryEmoji(item.category.name)}</div>
+        {item.image && !imgError ? (
+          <img
+            src={item.image}
+            alt={item.name}
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <>
+            <div className={"absolute inset-0 bg-gradient-to-br " + (item.category.name === "Wraps" ? "from-amber-50 to-orange-100" : item.category.name === "Shawarma" ? "from-red-50 to-orange-50" : item.category.name === "Mandi" ? "from-yellow-50 to-amber-100" : item.category.name === "Madbi" ? "from-orange-50 to-red-50" : item.category.name === "Beverages" ? "from-cyan-50 to-blue-50" : item.category.name === "Sides" ? "from-yellow-50 to-amber-50" : item.category.name === "Desserts" ? "from-pink-50 to-rose-50" : "from-amber-50 to-yellow-50")} />
+            <div className="absolute inset-0 flex items-center justify-center text-6xl select-none">{getCategoryEmoji(item.category.name)}</div>
+          </>
+        )}
         {item.badge && (
           <div className="absolute top-2 left-2">
             <span className={"inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold " + (badgeColors[item.badge] || "bg-red-500 text-white")}>
@@ -380,7 +410,7 @@ function MenuItemCard({ item, onOpenDetail, onQuickAdd, currency }: { item: Prod
           <span className="font-bold text-base sm:text-lg text-gray-900">{currency} {item.price}</span>
           {qty > 0 ? (
             <div className="flex items-center gap-1">
-              <button onClick={() => onQuickAdd(item)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer transition-colors"><Minus className="w-3.5 h-3.5" /></button>
+              <button onClick={() => onDecrement(item)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer transition-colors"><Minus className="w-3.5 h-3.5" /></button>
               <span className="w-6 text-center text-sm font-bold">{qty}</span>
               <button onClick={() => onQuickAdd(item)} className="w-7 h-7 rounded-full bg-[var(--p)] hover:bg-[var(--p-dark)] text-[var(--p-text)] flex items-center justify-center cursor-pointer transition-colors"><Plus className="w-3.5 h-3.5" /></button>
             </div>
@@ -394,9 +424,10 @@ function MenuItemCard({ item, onOpenDetail, onQuickAdd, currency }: { item: Prod
 }
 
 // ---- Product Detail Modal ----
-function ProductDetailModal({ item, onClose, isOpen, currency }: { item: Product | null; onClose: () => void; isOpen: boolean; currency: string }) {
+function ProductDetailModal({ item, onClose, isOpen, currency, slug, onCartSynced }: { item: Product | null; onClose: () => void; isOpen: boolean; currency: string; slug: string; onCartSynced: () => void }) {
   const [qty, setQty] = useState(1);
   const [selectedAddons, setSelectedAddons] = useState<number[]>([]);
+  const [imgError, setImgError] = useState(false);
   const { addItem } = useCartStore();
   const { toast } = useToast();
   const toggleAddon = (idx: number) => setSelectedAddons((p) => p.includes(idx) ? p.filter((x) => x !== idx) : [...p, idx]);
@@ -406,7 +437,12 @@ function ProductDetailModal({ item, onClose, isOpen, currency }: { item: Product
   const handleAdd = () => {
     const names = (item.addons || []).filter((_, i) => selectedAddons.includes(i)).map((a) => a.name);
     const fullName = names.length > 0 ? item.name + " (" + names.join(", ") + ")" : item.name;
-    for (let i = 0; i < qty; i++) addItem({ productId: item.id, name: fullName, description: item.description, price: item.price + addonTotal, category: item.category.name, rating: item.rating, badge: item.badge });
+    for (let i = 0; i < qty; i++) addItem({ productId: item.id, name: fullName, description: item.description, price: item.price + addonTotal, image: item.image, category: item.category.name, rating: item.rating, badge: item.badge });
+    fetch(`/${slug}/api/cart`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId: item.id, quantity: qty, addons: names }),
+    }).then(() => onCartSynced()).catch(() => {});
     toast({ title: "Added to cart", description: qty + "x " + item.name });
     onClose();
   };
@@ -420,7 +456,13 @@ function ProductDetailModal({ item, onClose, isOpen, currency }: { item: Product
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 cursor-pointer transition-colors"><X className="w-4 h-4 text-gray-600" /></button>
           </div>
           <div className="p-5 space-y-5">
-            <div className={"aspect-[16/9] rounded-2xl flex items-center justify-center text-7xl " + (item.category.name === "Wraps" ? "bg-gradient-to-br from-amber-50 to-orange-100" : item.category.name === "Shawarma" ? "bg-gradient-to-br from-red-50 to-orange-50" : item.category.name === "Mandi" ? "bg-gradient-to-br from-yellow-50 to-amber-100" : "bg-gradient-to-br from-orange-50 to-red-50")}>{getCategoryEmoji(item.category.name)}</div>
+            {item.image && !imgError ? (
+              <div className="aspect-[16/9] rounded-2xl overflow-hidden bg-gray-100">
+                <img src={item.image} alt={item.name} onError={() => setImgError(true)} className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className={"aspect-[16/9] rounded-2xl flex items-center justify-center text-7xl " + (item.category.name === "Wraps" ? "bg-gradient-to-br from-amber-50 to-orange-100" : item.category.name === "Shawarma" ? "bg-gradient-to-br from-red-50 to-orange-50" : item.category.name === "Mandi" ? "bg-gradient-to-br from-yellow-50 to-amber-100" : "bg-gradient-to-br from-orange-50 to-red-50")}>{getCategoryEmoji(item.category.name)}</div>
+            )}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1"><Star className="w-5 h-5 fill-[var(--p)] text-[var(--p)]" /><span className="font-semibold text-gray-700">{item.rating}</span></div>
               {item.badge && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">{item.badge}</span>}
@@ -462,12 +504,45 @@ function ProductDetailModal({ item, onClose, isOpen, currency }: { item: Product
 }
 
 // ---- Cart Drawer ----
-function CartDrawer({ onCheckout, tenant }: { onCheckout: () => void; tenant: TenantConfig }) {
+function CartDrawer({ onCheckout, tenant, slug, onCartSynced }: { onCheckout: () => void; tenant: TenantConfig; slug: string; onCartSynced: () => void }) {
   const { items, isOpen, closeCart, removeItem, updateQuantity, getTotalPrice, clearCart } = useCartStore();
   const { toast } = useToast();
   const total = getTotalPrice();
   const deliveryFee = total >= tenant.freeDeliveryThreshold ? 0 : tenant.deliveryFee;
   const grandTotal = total + deliveryFee;
+
+  const syncQty = (item: { id: number; productId: number }, nextQty: number) => {
+    updateQuantity(item.productId, nextQty);
+    if (item.id > 0) {
+      if (nextQty <= 0) {
+        fetch(`/${slug}/api/cart/${item.id}`, { method: "DELETE" }).then(() => onCartSynced()).catch(() => {});
+      } else {
+        fetch(`/${slug}/api/cart/${item.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity: nextQty }),
+        }).then(() => onCartSynced()).catch(() => {});
+      }
+    }
+  };
+
+  const syncRemove = (item: { id: number; productId: number; name: string }) => {
+    removeItem(item.productId);
+    if (item.id > 0) {
+      fetch(`/${slug}/api/cart/${item.id}`, { method: "DELETE" }).then(() => onCartSynced()).catch(() => {});
+    }
+    toast({ title: "Removed", description: item.name + " removed from cart" });
+  };
+
+  const syncClear = () => {
+    const current = [...items];
+    clearCart();
+    Promise.all(
+      current.filter((i) => i.id > 0).map((i) => fetch(`/${slug}/api/cart/${i.id}`, { method: "DELETE" }))
+    ).catch(() => {});
+    toast({ title: "Cart cleared" });
+  };
+
   return (
     <AnimatePresence>{isOpen && (
       <>
@@ -489,17 +564,23 @@ function CartDrawer({ onCheckout, tenant }: { onCheckout: () => void; tenant: Te
               <div className="divide-y divide-gray-50">
                 {items.map((item) => (
                   <motion.div key={item.productId} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex items-center gap-3 p-4 hover:bg-gray-50/50 transition-colors">
-                    <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">{getCategoryEmoji(item.category)}</div>
+                    <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                      ) : (
+                        getCategoryEmoji(item.category)
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
                       <p className="text-sm font-bold text-gray-700 mt-0.5">{tenant.currency} {item.price * item.quantity}</p>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <button onClick={() => updateQuantity(item.productId, item.quantity - 1)} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer transition-colors"><Minus className="w-3 h-3" /></button>
+                        <button onClick={() => syncQty(item, item.quantity - 1)} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer transition-colors"><Minus className="w-3 h-3" /></button>
                         <span className="text-sm font-bold w-5 text-center">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.productId, item.quantity + 1)} className="w-6 h-6 rounded-full bg-[var(--p)] hover:bg-[var(--p-dark)] text-[var(--p-text)] flex items-center justify-center cursor-pointer transition-colors"><Plus className="w-3 h-3" /></button>
+                        <button onClick={() => syncQty(item, item.quantity + 1)} className="w-6 h-6 rounded-full bg-[var(--p)] hover:bg-[var(--p-dark)] text-[var(--p-text)] flex items-center justify-center cursor-pointer transition-colors"><Plus className="w-3 h-3" /></button>
                       </div>
                     </div>
-                    <button onClick={() => { removeItem(item.productId); toast({ title: "Removed", description: item.name + " removed from cart" }); }} className="p-1.5 rounded-full hover:bg-red-50 cursor-pointer transition-colors flex-shrink-0" aria-label="Remove"><Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" /></button>
+                    <button onClick={() => syncRemove(item)} className="p-1.5 rounded-full hover:bg-red-50 cursor-pointer transition-colors flex-shrink-0" aria-label="Remove"><Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" /></button>
                   </motion.div>
                 ))}
               </div>
@@ -514,7 +595,7 @@ function CartDrawer({ onCheckout, tenant }: { onCheckout: () => void; tenant: Te
                 <div className="flex justify-between font-bold text-base text-gray-900 pt-2 border-t border-gray-100"><span>Total</span><span>{tenant.currency} {grandTotal}</span></div>
               </div>
               <button onClick={onCheckout} className="w-full py-3.5 bg-[var(--p)] text-[var(--p-text)] font-bold text-base rounded-full hover:bg-[var(--p-dark)] transition-colors duration-200 cursor-pointer flex items-center justify-center gap-2">Proceed to Checkout</button>
-              <button onClick={() => { clearCart(); toast({ title: "Cart cleared" }); }} className="w-full py-2 text-sm text-gray-500 hover:text-red-500 transition-colors cursor-pointer">Clear Cart</button>
+              <button onClick={syncClear} className="w-full py-2 text-sm text-gray-500 hover:text-red-500 transition-colors cursor-pointer">Clear Cart</button>
             </div>
           )}
         </motion.div>
@@ -524,7 +605,7 @@ function CartDrawer({ onCheckout, tenant }: { onCheckout: () => void; tenant: Te
 }
 
 // ---- Checkout Modal ----
-function CheckoutModal({ onClose, isOpen, tenant }: { onClose: () => void; isOpen: boolean; tenant: TenantConfig }) {
+function CheckoutModal({ onClose, isOpen, tenant, slug }: { onClose: () => void; isOpen: boolean; tenant: TenantConfig; slug: string }) {
   const { items, getTotalPrice, clearCart } = useCartStore();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
@@ -532,17 +613,18 @@ function CheckoutModal({ onClose, isOpen, tenant }: { onClose: () => void; isOpe
   const [orderNumber, setOrderNumber] = useState("");
   const [discountCode, setDiscountCode] = useState("");
   const [discountAmt, setDiscountAmt] = useState(0);
+  const [freeDeliveryCoupon, setFreeDeliveryCoupon] = useState(false);
   const [discountError, setDiscountError] = useState("");
   const [form, setForm] = useState({ name: "", phone: "", address: "", notes: "", payment: "cod" as string });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const subtotal = getTotalPrice();
-  const deliveryFee = subtotal >= tenant.freeDeliveryThreshold ? 0 : tenant.deliveryFee;
-  const grandTotal = subtotal - discountAmt + deliveryFee;
+  const deliveryFee = freeDeliveryCoupon || subtotal >= tenant.freeDeliveryThreshold ? 0 : tenant.deliveryFee;
+  const grandTotal = Math.max(0, subtotal - discountAmt + deliveryFee);
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = "Name is required";
-    if (!form.phone.trim() || form.phone.length < 10) e.phone = "Valid phone number required";
+    if (!form.phone.trim() || form.phone.trim().length < 7) e.phone = "Valid phone number required";
     if (!form.address.trim()) e.address = "Delivery address is required";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -552,18 +634,20 @@ function CheckoutModal({ onClose, isOpen, tenant }: { onClose: () => void; isOpe
     if (!discountCode.trim()) return;
     setDiscountError("");
     try {
-      const res = await fetch("/api/offers", {
+      const res = await fetch(`/${slug}/api/offers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: discountCode, subtotal }),
       });
       const data = await res.json();
       if (data.success) {
-        setDiscountAmt(data.data.discountAmount);
+        setDiscountAmt(data.data.discountAmount || 0);
+        setFreeDeliveryCoupon(Boolean(data.data.freeDelivery));
         toast({ title: "Discount applied!", description: data.data.title });
       } else {
         setDiscountError(data.error);
         setDiscountAmt(0);
+        setFreeDeliveryCoupon(false);
       }
     } catch {
       setDiscountError("Failed to apply discount");
@@ -575,7 +659,7 @@ function CheckoutModal({ onClose, isOpen, tenant }: { onClose: () => void; isOpe
   const handleConfirm = async () => {
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/orders", {
+      const res = await fetch(`/${slug}/api/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -585,6 +669,7 @@ function CheckoutModal({ onClose, isOpen, tenant }: { onClose: () => void; isOpe
           notes: form.notes,
           paymentMethod: form.payment,
           discountCode: discountCode.trim() || undefined,
+          items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
         }),
       });
       const data = await res.json();
@@ -707,7 +792,7 @@ function CheckoutModal({ onClose, isOpen, tenant }: { onClose: () => void; isOpe
 }
 
 // ---- Auth Modal ----
-function AuthModal({ isOpen, onClose, user, onUserChange }: { isOpen: boolean; onClose: () => void; user: AuthUser | null; onUserChange: (u: AuthUser | null) => void }) {
+function AuthModal({ isOpen, onClose, user, onUserChange, slug }: { isOpen: boolean; onClose: () => void; user: AuthUser | null; onUserChange: (u: AuthUser | null) => void; slug: string }) {
   const [isLogin, setIsLogin] = useState(true);
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [error, setError] = useState("");
@@ -719,7 +804,7 @@ function AuthModal({ isOpen, onClose, user, onUserChange }: { isOpen: boolean; o
     setError("");
     setIsLoading(true);
     try {
-      const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+      const endpoint = isLogin ? `/${slug}/api/auth/login` : `/${slug}/api/auth/register`;
       const body = isLogin
         ? { email: form.email, password: form.password }
         : { name: form.name, email: form.email, phone: form.phone, password: form.password };
@@ -793,8 +878,8 @@ function AuthModal({ isOpen, onClose, user, onUserChange }: { isOpen: boolean; o
 }
 
 // ---- Menu Section ----
-function MenuSection({ products, activeCategory, searchQuery, onOpenDetail, onQuickAdd, onSearchChange, isLoading, currency }: {
-  products: Product[]; activeCategory: string; searchQuery: string; onOpenDetail: (item: Product) => void; onQuickAdd: (item: Product) => void; onSearchChange: (v: string) => void; isLoading: boolean; currency: string;
+function MenuSection({ products, activeCategory, searchQuery, onOpenDetail, onQuickAdd, onDecrement, onSearchChange, isLoading, currency }: {
+  products: Product[]; activeCategory: string; searchQuery: string; onOpenDetail: (item: Product) => void; onQuickAdd: (item: Product) => void; onDecrement: (item: Product) => void; onSearchChange: (v: string) => void; isLoading: boolean; currency: string;
 }) {
   const filtered = useMemo(() => {
     let items = products;
@@ -833,7 +918,7 @@ function MenuSection({ products, activeCategory, searchQuery, onOpenDetail, onQu
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
           <AnimatePresence mode="popLayout">
-            {filtered.map((item) => <MenuItemCard key={item.id} item={item} onOpenDetail={onOpenDetail} onQuickAdd={onQuickAdd} currency={currency} />)}
+            {filtered.map((item) => <MenuItemCard key={item.id} item={item} onOpenDetail={onOpenDetail} onQuickAdd={onQuickAdd} onDecrement={onDecrement} currency={currency} />)}
           </AnimatePresence>
         </div>
       )}
@@ -951,7 +1036,7 @@ function SideMenu({ isOpen, onClose, user, onAuthClick, tenant }: { isOpen: bool
 // ---- WhatsApp Button ----
 function WhatsAppButton({ number }: { number: string }) {
   return (
-    <a href={"https://wa.me/" + number} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 left-[10%] sm:left-[10%] z-50 w-14 h-14 bg-green-500 rounded-full flex items-center justify-center shadow-lg hover:bg-green-600 hover:scale-110 transition-all duration-300" aria-label="Chat on WhatsApp">
+    <a href={"https://wa.me/" + number} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-50 w-13 h-13 bg-green-500 rounded-full flex items-center justify-center shadow-lg hover:bg-green-600 hover:scale-105 transition-all duration-300" aria-label="Chat on WhatsApp">
       <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
     </a>
   );
@@ -990,10 +1075,10 @@ export default function TenantStorefrontPage() {
       setDataLoading(true);
       try {
         const [tenantRes, catRes, prodRes, offerRes, userRes] = await Promise.all([
-          fetch("/api/tenant").then((r) => r.json()).catch(() => ({ success: false })),
-          fetch("/api/categories").then((r) => r.json()).catch(() => ({ success: false })),
-          fetch("/api/products").then((r) => r.json()).catch(() => ({ success: false })),
-          fetch("/api/offers").then((r) => r.json()).catch(() => ({ success: false })),
+          fetch(`/${slug}/api/tenant`).then((r) => r.json()).catch(() => ({ success: false })),
+          fetch(`/${slug}/api/categories`).then((r) => r.json()).catch(() => ({ success: false })),
+          fetch(`/${slug}/api/products`).then((r) => r.json()).catch(() => ({ success: false })),
+          fetch(`/${slug}/api/offers`).then((r) => r.json()).catch(() => ({ success: false })),
           fetch("/api/auth/me").then((r) => r.json()).catch(() => ({ success: false })),
         ]);
         if (tenantRes.success && tenantRes.data && tenantRes.data.slug === slug && tenantRes.data.isActive !== false) {
@@ -1021,22 +1106,20 @@ export default function TenantStorefrontPage() {
     if (tenant) document.title = tenant.name + " — Order Online";
   }, [tenant]);
 
-  // Clear any guest cart left over from a previous tenant, then sync with this
-  // tenant's backend cart (backend cart is tenant-scoped).
-  useEffect(() => {
-    if (!tenant || notFound) return;
-    useCartStore.getState().clearCart();
-    fetch("/api/cart")
+  const syncCartFromServer = useCallback(() => {
+    if (!slug) return;
+    fetch(`/${slug}/api/cart`)
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.data.items) {
           setItems(
-            data.data.items.map((ci: { id: number; productId: number; quantity: number; product: { name: string; description: string; price: number; badge: string | null; rating: number; category: { name: string } } }) => ({
+            data.data.items.map((ci: { id: number; productId: number; quantity: number; product: { name: string; description: string; price: number; image?: string; badge: string | null; rating: number; category: { name: string } } }) => ({
               id: ci.id,
               productId: ci.productId,
               name: ci.product.name,
-              description: ci.product.description,
+              description: ci.product.description || "",
               price: ci.product.price,
+              image: ci.product.image || "",
               category: ci.product.category.name,
               rating: ci.product.rating,
               badge: ci.product.badge,
@@ -1046,14 +1129,42 @@ export default function TenantStorefrontPage() {
         }
       })
       .catch(() => { /* guest cart empty */ });
-  }, [tenant, notFound, setItems]);
+  }, [slug, setItems]);
+
+  // Clear any guest cart left over from a previous tenant, then sync with this
+  // tenant's backend cart (backend cart is tenant-scoped).
+  useEffect(() => {
+    if (!tenant || notFound) return;
+    useCartStore.getState().clearCart();
+    syncCartFromServer();
+  }, [tenant, notFound, syncCartFromServer]);
 
   const handleQuickAdd = useCallback((item: Product) => {
-    addItem({ productId: item.id, name: item.name, description: item.description, price: item.price, category: item.category.name, rating: item.rating, badge: item.badge });
+    addItem({ productId: item.id, name: item.name, description: item.description, price: item.price, image: item.image, category: item.category.name, rating: item.rating, badge: item.badge });
     toast({ title: "Added to cart", description: item.name + " - " + (tenant ? tenant.currency : "Rs.") + " " + item.price });
     // Sync to backend
-    fetch("/api/cart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: item.id, quantity: 1 }) }).catch(() => {});
-  }, [addItem, toast, tenant]);
+    fetch(`/${slug}/api/cart`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: item.id, quantity: 1 }) })
+      .then(() => syncCartFromServer())
+      .catch(() => {});
+  }, [addItem, toast, tenant, slug, syncCartFromServer]);
+
+  const handleDecrement = useCallback((item: Product) => {
+    const existing = useCartStore.getState().items.find((i) => i.productId === item.id);
+    if (!existing) return;
+    const nextQty = existing.quantity - 1;
+    useCartStore.getState().updateQuantity(item.id, nextQty);
+    if (existing.id > 0) {
+      if (nextQty <= 0) {
+        fetch(`/${slug}/api/cart/${existing.id}`, { method: "DELETE" }).then(() => syncCartFromServer()).catch(() => {});
+      } else {
+        fetch(`/${slug}/api/cart/${existing.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity: nextQty }),
+        }).then(() => syncCartFromServer()).catch(() => {});
+      }
+    }
+  }, [slug, syncCartFromServer]);
 
   const [detailKey, setDetailKey] = useState(0);
   const handleOpenDetail = useCallback((item: Product) => {
@@ -1092,14 +1203,14 @@ export default function TenantStorefrontPage() {
         <HeroBanner onCtaClick={handleBannerCta} loc={loc} />
         <OffersSection offers={offers} onOfferClick={handleOfferClick} />
         <CategoryNav categories={categories} activeCategory={activeCategory} onSelect={(cat) => { setActiveCategory(cat); setSearchValue(""); }} />
-        <MenuSection products={products} activeCategory={activeCategory} searchQuery={searchValue} onOpenDetail={handleOpenDetail} onQuickAdd={handleQuickAdd} onSearchChange={setSearchValue} isLoading={dataLoading} currency={tenant.currency} />
+        <MenuSection products={products} activeCategory={activeCategory} searchQuery={searchValue} onOpenDetail={handleOpenDetail} onQuickAdd={handleQuickAdd} onDecrement={handleDecrement} onSearchChange={setSearchValue} isLoading={dataLoading} currency={tenant.currency} />
       </main>
       <Footer tenant={tenant} />
       <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} user={user} onAuthClick={() => setAuthOpen(true)} tenant={tenant} />
-      <CartDrawer onCheckout={handleOpenCheckout} tenant={tenant} />
-      <CheckoutModal key={checkoutKey} onClose={closeCheckout} isOpen={checkoutOpen} tenant={tenant} />
-      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} user={user} onUserChange={setUser} />
-      <ProductDetailModal key={detailKey} item={detailItem} onClose={() => setDetailOpen(false)} isOpen={detailOpen} currency={tenant.currency} />
+      <CartDrawer onCheckout={handleOpenCheckout} tenant={tenant} slug={slug} onCartSynced={syncCartFromServer} />
+      <CheckoutModal key={checkoutKey} onClose={closeCheckout} isOpen={checkoutOpen} tenant={tenant} slug={slug} />
+      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} user={user} onUserChange={setUser} slug={slug} />
+      <ProductDetailModal key={detailKey} item={detailItem} onClose={() => setDetailOpen(false)} isOpen={detailOpen} currency={tenant.currency} slug={slug} onCartSynced={syncCartFromServer} />
       <WhatsAppButton number={waNumber(tenant)} />
     </div>
   );

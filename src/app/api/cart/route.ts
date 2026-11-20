@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser, getOrCreateGuestId, AuthError } from "@/lib/auth";
+import { readLocalDb, useLocalStore, writeLocalDb } from "@/lib/local-store";
 import { requireTenant, TenantNotFoundError, tenantNotFound } from "@/lib/tenant";
 
 // Identify the user (logged in or guest)
@@ -20,6 +21,37 @@ export async function GET(req: NextRequest) {
   try {
     const tenant = await requireTenant(req);
     const { userId } = await getIdentifier();
+
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const catMap = new Map(store.categories.map((c) => [c.id, c]));
+      const prodMap = new Map(store.products.map((p) => [p.id, p]));
+      const items = store.cartItems
+        .filter((ci) => ci.userId === userId && ci.tenantId === tenant.id)
+        .map((ci) => {
+          const p = prodMap.get(ci.productId);
+          const cat = p ? catMap.get(p.categoryId) : undefined;
+          return {
+            ...ci,
+            product: p
+              ? {
+                  name: p.name,
+                  description: p.description,
+                  price: p.price,
+                  image: p.image,
+                  category: { name: cat?.name ?? "Menu" },
+                  badge: p.badge,
+                  rating: p.rating,
+                }
+              : { name: "Item", description: "", price: 0, image: "", category: { name: "Menu" }, badge: null, rating: 4 },
+          };
+        });
+      const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+      return NextResponse.json({
+        success: true,
+        data: { items, subtotal, itemCount: items.reduce((s, i) => s + i.quantity, 0) },
+      });
+    }
 
     const cartItems = await db.cartItem.findMany({
       where: { userId, tenantId: tenant.id },
@@ -59,6 +91,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Valid productId is required" }, { status: 400 });
     }
 
+    const addonsStr = Array.isArray(addons) && addons.length > 0 ? JSON.stringify(addons) : null;
+
+    if (useLocalStore()) {
+      const store = readLocalDb();
+      const product = store.products.find((p) => p.id === productId && p.tenantId === tenant.id && p.isActive);
+      if (!product) {
+        return NextResponse.json({ success: false, error: "Product not found" }, { status: 404 });
+      }
+      const existing = store.cartItems.find(
+        (ci) => ci.userId === userId && ci.productId === productId && ci.tenantId === tenant.id && (ci.addons ?? null) === addonsStr
+      );
+      let cartItem;
+      if (existing) {
+        existing.quantity += quantity;
+        cartItem = existing;
+      } else {
+        cartItem = {
+          id: store.nextId++,
+          tenantId: tenant.id,
+          userId,
+          productId,
+          quantity,
+          addons: addonsStr,
+          createdAt: new Date().toISOString(),
+        };
+        store.cartItems.push(cartItem);
+      }
+      writeLocalDb(store);
+      const prodMap = new Map(store.products.map((p) => [p.id, p]));
+      const allItems = store.cartItems.filter((ci) => ci.userId === userId && ci.tenantId === tenant.id);
+      const subtotal = allItems.reduce((s, i) => s + (prodMap.get(i.productId)?.price ?? 0) * i.quantity, 0);
+      return NextResponse.json({
+        success: true,
+        data: {
+          item: { ...cartItem, product },
+          subtotal,
+          itemCount: allItems.reduce((s, i) => s + i.quantity, 0),
+        },
+      });
+    }
+
     // Verify product exists and is active
     const product = await db.product.findFirst({ where: { id: productId, tenantId: tenant.id, isActive: true } });
     if (!product) {
@@ -66,10 +139,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Upsert cart item
-    const addonsStr = addons && addons.length > 0 ? JSON.stringify(addons) : null;
-
     const existing = await db.cartItem.findFirst({
-      where: { userId, productId, tenantId: tenant.id },
+      where: { userId, productId, tenantId: tenant.id, addons: addonsStr },
     });
 
     let cartItem;

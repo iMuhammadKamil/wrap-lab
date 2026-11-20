@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "../_components/api";
+import { ImagePicker, LOGO_PRESETS } from "../_components/image-picker";
 import { PageHeader } from "../_components/page-header";
 import type { AdminSettings } from "../_components/types";
 
@@ -188,9 +189,15 @@ export default function AdminSettingsPage() {
             <Field id="s-tagline" label="Tagline">
               <Input id="s-tagline" value={form.tagline} onChange={(e) => set("tagline", e.target.value)} />
             </Field>
-            <Field id="s-logo" label="Logo URL">
-              <Input id="s-logo" value={form.logo} onChange={(e) => set("logo", e.target.value)} placeholder="https://…" />
-            </Field>
+            <ImagePicker
+              id="s-logo"
+              label="Restaurant Logo"
+              value={form.logo}
+              onChange={(v) => set("logo", v)}
+              presets={LOGO_PRESETS}
+              maxDim={256}
+              placeholder="/images/wraplab-logo.jpg or https://…"
+            />
             <div className="grid grid-cols-2 gap-3">
               <Field id="s-primary" label="Primary Color">
                 <div className="flex items-center gap-2">
